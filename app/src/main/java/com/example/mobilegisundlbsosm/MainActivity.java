@@ -25,12 +25,30 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
 import org.osmdroid.util.GeoPoint;
 import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.Marker;
+import org.osmdroid.views.overlay.Polyline;
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider;
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
+import org.osmdroid.wms.WMSEndpoint;
+import org.osmdroid.wms.WMSLayer;
+import org.osmdroid.wms.WMSParser;
+import org.osmdroid.wms.WMSTileSource;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
+
     int PERMISSION_ID = 44;
     private MapView map = null;
+    private MyLocationNewOverlay mLocationOverlay;
+    private List<GeoPoint> geoPoints = new ArrayList<>();
+    private Polyline line = new Polyline();   //see note below!
+    private Context ctx;
+    private IMapController mapController;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -39,7 +57,7 @@ public class MainActivity extends AppCompatActivity {
         //handle permissions first, before map is created. not depicted here
 
         //load/initialize the osmdroid configuration, this can be done
-        Context ctx = getApplicationContext();
+        ctx = getApplicationContext();
         Configuration.getInstance().load(ctx, PreferenceManager.getDefaultSharedPreferences(ctx));
         //setting this before the layout is inflated is a good idea
         //it 'should' ensure that the map has a writable location for the map cache, even without permissions
@@ -55,9 +73,53 @@ public class MainActivity extends AppCompatActivity {
         map.setTileSource(TileSourceFactory.MAPNIK);
         map.setMultiTouchControls(true);
 
-        IMapController mapController = map.getController();
+        mapController = map.getController();
         mapController.setZoom(16.0);
 
+        HttpURLConnection c = null;
+        InputStream is = null;
+        WMSEndpoint wmsEndpoint;
+
+        final String WMS_FORMAT_STRING =
+                "https://sgx.geodatenzentrum.de/wms_dgm200" +
+                        "?service=WMS" +
+                        "&version=1.3.0" +
+                        "&request=GetMap" +
+                        "&Layers=relief" +
+                        "&bbox=%f,%f,%f,%f" +
+                        "&width=256" +
+                        "&height=256" +
+                        "&srs=EPSG:900913" +  // NB This is important, other SRS's won't work.
+                        "&format=image/png" +
+                        "&transparent=true";
+
+        try {
+            c = (HttpURLConnection) new URL(WMS_FORMAT_STRING).openConnection();
+            is = c.getInputStream();
+            wmsEndpoint = WMSParser.parse(is);
+
+            is.close();
+            c.disconnect();
+            WMSLayer layer = wmsEndpoint.getLayers().get(0);
+            WMSTileSource source = WMSTileSource.createFrom(wmsEndpoint, layer );
+            if (layer.getBbox() != null) {
+                //center map on this location
+                map.zoomToBoundingBox(layer.getBbox(),true);
+            }
+
+            map.setTileSource(source);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+
+        getDiviceLocation();
+
+    }
+
+    private void getDiviceLocation() {
         LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
         // check if location is enabled
@@ -71,12 +133,23 @@ public class MainActivity extends AppCompatActivity {
             GeoPoint startPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
             mapController.setCenter(startPoint);
 
-            Marker startMarker = new Marker(map);
-            startMarker.setPosition(startPoint);
-            startMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
-            map.getOverlays().add(startMarker);
+            geoPoints.add(startPoint);
 
-            startMarker.setIcon(getResources().getDrawable(R.drawable.blue_dot));
+
+            this.mLocationOverlay = new MyLocationNewOverlay(new GpsMyLocationProvider(ctx),map);
+            this.mLocationOverlay.enableMyLocation();
+            map.getOverlays().add(this.mLocationOverlay);
+            line.setOnClickListener(new Polyline.OnClickListener() {
+                @Override
+                public boolean onClick(Polyline polyline, MapView mapView, GeoPoint eventPos) {
+                    Toast.makeText(mapView.getContext(),
+                            "polyline with " + polyline.getPoints().size() + "pts was tapped",
+                            Toast.LENGTH_LONG).show();
+                    return false;
+                }
+            });
+
+            map.getOverlayManager().add(line);
 
         } else {
             // A toast provides simple feedback about an operation in a small popup.
@@ -85,9 +158,6 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
             startActivity(intent);
         }
-
-
-
 
     }
 
@@ -128,11 +198,15 @@ public class MainActivity extends AppCompatActivity {
         }
         locationManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,//GPS as provider
-                1000,//update every 1 sec
-                1,//every 1 m
+                5000,//update every 1 sec
+                5,//every 1 m
                 new LocationListener() {
                     @Override
                     public void onLocationChanged(@NonNull Location location) {
+                        GeoPoint startPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
+                        geoPoints.add(startPoint);
+                        //add your points here
+                        line.setPoints(geoPoints);
 
                     }
 
