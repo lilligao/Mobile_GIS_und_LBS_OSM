@@ -19,6 +19,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.google.android.gms.location.FusedLocationProviderClient;
+
 import org.osmdroid.api.IMapController;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
@@ -28,10 +30,7 @@ import org.osmdroid.views.overlay.Marker;
 import org.osmdroid.views.overlay.Polyline;
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider;
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
-import org.osmdroid.wms.WMSEndpoint;
-import org.osmdroid.wms.WMSLayer;
-import org.osmdroid.wms.WMSParser;
-import org.osmdroid.wms.WMSTileSource;
+
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -42,7 +41,8 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-    int PERMISSION_ID = 44;
+    private static final int PERMISSION_ID = 44;
+
     private MapView map = null;
     private MyLocationNewOverlay mLocationOverlay;
     private List<GeoPoint> geoPoints = new ArrayList<>();
@@ -76,57 +76,20 @@ public class MainActivity extends AppCompatActivity {
         mapController = map.getController();
         mapController.setZoom(16.0);
 
-        HttpURLConnection c = null;
-        InputStream is = null;
-        WMSEndpoint wmsEndpoint;
-
-        final String WMS_FORMAT_STRING =
-                "https://sgx.geodatenzentrum.de/wms_dgm200" +
-                        "?service=WMS" +
-                        "&version=1.3.0" +
-                        "&request=GetMap" +
-                        "&Layers=relief" +
-                        "&bbox=%f,%f,%f,%f" +
-                        "&width=256" +
-                        "&height=256" +
-                        "&srs=EPSG:900913" +  // NB This is important, other SRS's won't work.
-                        "&format=image/png" +
-                        "&transparent=true";
-
-        try {
-            c = (HttpURLConnection) new URL(WMS_FORMAT_STRING).openConnection();
-            is = c.getInputStream();
-            wmsEndpoint = WMSParser.parse(is);
-
-            is.close();
-            c.disconnect();
-            WMSLayer layer = wmsEndpoint.getLayers().get(0);
-            WMSTileSource source = WMSTileSource.createFrom(wmsEndpoint, layer );
-            if (layer.getBbox() != null) {
-                //center map on this location
-                map.zoomToBoundingBox(layer.getBbox(),true);
-            }
-
-            map.setTileSource(source);
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-
-        getDiviceLocation();
+        getDeviceLocation();
 
     }
 
-    private void getDiviceLocation() {
+
+
+    private void getDeviceLocation() {
         LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
         // check if location is enabled
         if (isLocationEnabled(locationManager)) {
             Location location = requestNewLocationData(locationManager);
 
-            if (location == null) {
+            while (location == null) {
                 location = requestNewLocationData(locationManager);
             }
 
@@ -198,8 +161,8 @@ public class MainActivity extends AppCompatActivity {
         }
         locationManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,//GPS as provider
-                5000,//update every 1 sec
-                5,//every 1 m
+                1000,//update every 1 sec
+                1,//every 1 m
                 new LocationListener() {
                     @Override
                     public void onLocationChanged(@NonNull Location location) {
@@ -208,6 +171,7 @@ public class MainActivity extends AppCompatActivity {
                         //add your points here
                         line.setPoints(geoPoints);
 
+                        Log.d("Latitude", "disable");
                     }
 
                     @Override
@@ -234,5 +198,6 @@ public class MainActivity extends AppCompatActivity {
         return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
         // return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
     }
+
 
 }
