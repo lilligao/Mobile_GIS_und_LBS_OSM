@@ -8,19 +8,20 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.StrictMode;
 import android.preference.PreferenceManager;
 import android.provider.Settings;
 import android.util.Log;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
-import com.google.android.gms.location.FusedLocationProviderClient;
-
+import org.chromium.net.CronetEngine;
 import org.osmdroid.api.IMapController;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
@@ -32,12 +33,17 @@ import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider;
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
 
+import java.io.BufferedOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -49,7 +55,10 @@ public class MainActivity extends AppCompatActivity {
     private Polyline line = new Polyline();   //see note below!
     private Context ctx;
     private IMapController mapController;
+    private Marker startMarker =null;
 
+
+    @RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -82,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
 
 
 
+    @RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
     private void getDeviceLocation() {
         LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
@@ -92,27 +102,35 @@ public class MainActivity extends AppCompatActivity {
             while (location == null) {
                 location = requestNewLocationData(locationManager);
             }
-
+            // create Geopoint of current position
             GeoPoint startPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
+            // zoom to current position
             mapController.setCenter(startPoint);
-
+            // Add current position to the list
             geoPoints.add(startPoint);
+            // add empty polyline to the map
+            map.getOverlayManager().add(line);
 
+            // show current position
+            startMarker = new Marker(map);
+            startMarker.setPosition(startPoint);
+            startMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER);
+            map.getOverlays().add(startMarker);
 
-            this.mLocationOverlay = new MyLocationNewOverlay(new GpsMyLocationProvider(ctx),map);
-            this.mLocationOverlay.enableMyLocation();
-            map.getOverlays().add(this.mLocationOverlay);
-            line.setOnClickListener(new Polyline.OnClickListener() {
-                @Override
-                public boolean onClick(Polyline polyline, MapView mapView, GeoPoint eventPos) {
-                    Toast.makeText(mapView.getContext(),
-                            "polyline with " + polyline.getPoints().size() + "pts was tapped",
-                            Toast.LENGTH_LONG).show();
-                    return false;
-                }
+            // set function if user click on the polyline
+            line.setOnClickListener((polyline, mapView, eventPos) -> {
+                Toast.makeText(mapView.getContext(),
+                        "polyline with " + polyline.getActualPoints().size() + "pts was tapped",
+                        Toast.LENGTH_LONG).show();
+                return false;
             });
 
-            map.getOverlayManager().add(line);
+
+//            StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+//            StrictMode.setThreadPolicy(policy);
+//            RequestPostTask task = new RequestPostTask();
+//            task.PostData(startPoint);
+
 
         } else {
             // A toast provides simple feedback about an operation in a small popup.
@@ -147,7 +165,7 @@ public class MainActivity extends AppCompatActivity {
     @SuppressLint("MissingPermission")
     private Location requestNewLocationData(LocationManager locationManager) {
 
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.INTERNET) != PackageManager.PERMISSION_GRANTED) {
             // TODO: Consider calling
             //    ActivityCompat#requestPermissions
             // here to request the missing permissions, and then overriding
@@ -157,47 +175,78 @@ public class MainActivity extends AppCompatActivity {
             // for ActivityCompat#requestPermissions for more details.
             ActivityCompat.requestPermissions(this, new String[]{
                     Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.ACCESS_FINE_LOCATION}, PERMISSION_ID);
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.INTERNET}, PERMISSION_ID);
         }
-        locationManager.requestLocationUpdates(
-                LocationManager.GPS_PROVIDER,//GPS as provider
-                1000,//update every 1 sec
-                1,//every 1 m
-                new LocationListener() {
-                    @Override
-                    public void onLocationChanged(@NonNull Location location) {
-                        GeoPoint startPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
-                        geoPoints.add(startPoint);
-                        //add your points here
-                        line.setPoints(geoPoints);
 
-                        Log.d("Latitude", "disable");
-                    }
+        Location lastKnownLocation = null;
+        List<String> providerNames = locationManager.getProviders(true);
+        for (String provider : providerNames) {
+            locationManager.requestLocationUpdates(
+                    provider,//provider
+                    5000,//update every 1 sec
+                    3,//every 1 m
+                    new LocationListener() {
+                        @RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
+                        @Override
+                        public void onLocationChanged(@NonNull Location location) {
 
-                    @Override
-                    public void onProviderDisabled(String provider) {
-                        Log.d("Latitude", "disable");
-                    }
+                            GeoPoint startPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
+                            runOnUiThread(() -> {
+                                geoPoints.add(startPoint);
+                                //add your points here
+                                line.setPoints(geoPoints);
+                                startMarker.setPosition(startPoint);
+                            });
 
-                    @Override
-                    public void onProviderEnabled(String provider) {
-                        Log.d("Latitude", "enable");
-                    }
+                            Thread thread = new Thread(() -> {
+                                try  {
+                                    Log.d("WFS-Thread runs", "thread runs");
+                                    //Your code goes here
+                                    RequestPostTask task = new RequestPostTask();
+                                    task.PostData(startPoint);
+                                } catch (Exception e) {
+                                    Log.e("WFS-Thread-run", String.valueOf(e));
+                                }
+                            });
 
-                    @Override
-                    public void onStatusChanged(String provider, int status, Bundle extras) {
-                        Log.d("Latitude", "status");
+                            thread.start();
+
+                            Log.d("Latitude", "disable");
+                        }
+
+                        @Override
+                        public void onProviderDisabled(String provider) {
+                            Log.d("Latitude", "disable");
+                        }
+
+                        @Override
+                        public void onProviderEnabled(String provider) {
+                            Log.d("Latitude", "enable");
+                        }
+
+                        @Override
+                        public void onStatusChanged(String provider, int status, Bundle extras) {
+                            Log.d("Latitude", "status");
+                        }
                     }
-                }
-        );
-        return locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            );
+            lastKnownLocation = locationManager.getLastKnownLocation(provider);
+            if (lastKnownLocation != null) {
+                return lastKnownLocation;
+            }
+        }
+        return lastKnownLocation;
     }
 
     // method to check if location is enabled
     private boolean isLocationEnabled(LocationManager locationManager) {
-        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
-        // return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+        //return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
     }
+
+
+
 
 
 }
