@@ -14,6 +14,8 @@ import android.os.StrictMode;
 import android.preference.PreferenceManager;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.View;
+import android.widget.Button;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -52,10 +54,14 @@ public class MainActivity extends AppCompatActivity {
     private MapView map = null;
     private MyLocationNewOverlay mLocationOverlay;
     private List<GeoPoint> geoPoints = new ArrayList<>();
-    private Polyline line = new Polyline();   //see note below!
+    private Polyline line = null;   //see note below!
     private Context ctx;
     private IMapController mapController;
     private Marker startMarker =null;
+    private Button button_zoom;
+    private Button button_track;
+    private Button button_wfs;
+    GeoPoint startPoint = null;
 
 
     @RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
@@ -86,6 +92,9 @@ public class MainActivity extends AppCompatActivity {
         mapController.setZoom(16.0);
 
         getDeviceLocation();
+        addListenerOnButton_zoom();
+        addListenerOnButton_track();
+        addListenerOnButton_wfs();
 
     }
 
@@ -103,13 +112,13 @@ public class MainActivity extends AppCompatActivity {
                 location = requestNewLocationData(locationManager);
             }
             // create Geopoint of current position
-            GeoPoint startPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
+            startPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
             // zoom to current position
             mapController.setCenter(startPoint);
             // Add current position to the list
             geoPoints.add(startPoint);
             // add empty polyline to the map
-            map.getOverlayManager().add(line);
+            // map.getOverlayManager().add(line);
 
             // show current position
             startMarker = new Marker(map);
@@ -117,6 +126,7 @@ public class MainActivity extends AppCompatActivity {
             startMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER);
             map.getOverlays().add(startMarker);
 
+            line = new Polyline();
             // set function if user click on the polyline
             line.setOnClickListener((polyline, mapView, eventPos) -> {
                 Toast.makeText(mapView.getContext(),
@@ -191,27 +201,13 @@ public class MainActivity extends AppCompatActivity {
                         @Override
                         public void onLocationChanged(@NonNull Location location) {
 
-                            GeoPoint startPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
+                            startPoint = new GeoPoint(location.getLatitude(), location.getLongitude());
                             runOnUiThread(() -> {
                                 geoPoints.add(startPoint);
                                 //add your points here
                                 line.setPoints(geoPoints);
                                 startMarker.setPosition(startPoint);
                             });
-
-                            Thread thread = new Thread(() -> {
-                                try  {
-                                    Log.d("WFS-Thread runs", "thread runs");
-                                    //Your code goes here
-                                    RequestPostTask task = new RequestPostTask();
-                                    task.PostData(startPoint);
-                                } catch (Exception e) {
-                                    Log.e("WFS-Thread-run", String.valueOf(e));
-                                }
-                            });
-
-                            thread.start();
-
                             Log.d("Latitude", "disable");
                         }
 
@@ -243,6 +239,63 @@ public class MainActivity extends AppCompatActivity {
     private boolean isLocationEnabled(LocationManager locationManager) {
         //return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
         return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+    }
+
+
+    public void addListenerOnButton_zoom() {
+        button_zoom = (Button) findViewById(R.id.zoom_location);
+
+        button_zoom.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // zoom to current position
+                mapController.setZoom(20.0);
+                if (startPoint!=null) {
+                    mapController.setCenter(startPoint);
+                }
+            }
+        });
+    }
+
+    public void addListenerOnButton_track() {
+        button_track = (Button) findViewById(R.id.track_line);
+
+        button_track.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+
+                if (line!=null) {
+                    map.getOverlayManager().add(line);
+                }
+            }
+        });
+    }
+
+
+    public void addListenerOnButton_wfs() {
+        button_wfs = (Button) findViewById(R.id.send_wfs);
+
+        button_wfs.setOnClickListener(new View.OnClickListener() {
+            @RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
+            @Override
+            public void onClick(View view) {
+
+                Thread thread = new Thread(() -> {
+                    try  {
+                        Log.d("WFS-Thread runs", "thread runs");
+                        //Your code goes here
+                        RequestPostTask task = new RequestPostTask();
+                        for (int i=0; i < geoPoints.size(); i++){
+                            task.PostData(geoPoints.get(i));
+                        }
+                    } catch (Exception e) {
+                        Log.e("WFS-Thread-run", String.valueOf(e));
+                    }
+                });
+
+                thread.start();
+            }
+        });
     }
 
 
