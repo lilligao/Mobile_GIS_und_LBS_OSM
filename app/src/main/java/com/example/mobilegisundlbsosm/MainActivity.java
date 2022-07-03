@@ -10,10 +10,14 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
 import android.os.StrictMode;
 import android.preference.PreferenceManager;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
@@ -84,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
         //inflate and create the map
         setContentView(R.layout.activity_main);
 
-        map = (MapView) findViewById(R.id.mapview);
+        map = findViewById(R.id.mapview);
         map.setTileSource(TileSourceFactory.MAPNIK);
         map.setMultiTouchControls(true);
 
@@ -243,58 +247,50 @@ public class MainActivity extends AppCompatActivity {
 
 
     public void addListenerOnButton_zoom() {
-        button_zoom = (Button) findViewById(R.id.zoom_location);
+        button_zoom = findViewById(R.id.zoom_location);
 
-        button_zoom.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                // zoom to current position
-                mapController.setZoom(20.0);
-                if (startPoint!=null) {
-                    mapController.setCenter(startPoint);
-                }
+        button_zoom.setOnClickListener(view -> {
+            // zoom to current position
+            mapController.setZoom(20.0);
+            if (startPoint!=null) {
+                mapController.setCenter(startPoint);
             }
         });
     }
 
     public void addListenerOnButton_track() {
-        button_track = (Button) findViewById(R.id.track_line);
+        button_track = findViewById(R.id.track_line);
 
-        button_track.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
+        button_track.setOnClickListener(view -> {
 
-                if (line!=null) {
-                    map.getOverlayManager().add(line);
-                }
+            if (line!=null) {
+                map.getOverlayManager().add(line);
             }
         });
     }
 
 
+    @RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
     public void addListenerOnButton_wfs() {
-        button_wfs = (Button) findViewById(R.id.send_wfs);
+        button_wfs = findViewById(R.id.send_wfs);
 
-        button_wfs.setOnClickListener(new View.OnClickListener() {
-            @RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
-            @Override
-            public void onClick(View view) {
+        button_wfs.setOnClickListener(view -> {
 
-                Thread thread = new Thread(() -> {
-                    try  {
-                        Log.d("WFS-Thread runs", "thread runs");
-                        //Your code goes here
-                        RequestPostTask task = new RequestPostTask();
-                        for (int i=0; i < geoPoints.size(); i++){
-                            task.PostData(geoPoints.get(i));
-                        }
-                    } catch (Exception e) {
-                        Log.e("WFS-Thread-run", String.valueOf(e));
+            Thread thread = new Thread(() -> {
+                try  {
+                    Log.d("WFS-Thread runs", "thread runs");
+                    //Your code goes here
+                    RequestPostTask task = new RequestPostTask();
+                    for (int i=0; i < geoPoints.size(); i++){
+                        task.PostData(geoPoints.get(i), map);
+                        runOnUiThread(() -> Toast.makeText(map.getContext(), task.getResponse(), Toast.LENGTH_LONG).show());
                     }
-                });
+                } catch (Exception e) {
+                    Log.e("WFS-Thread-run", String.valueOf(e));
+                }
+            });
 
-                thread.start();
-            }
+            thread.start();
         });
     }
 

@@ -3,20 +3,33 @@ package com.example.mobilegisundlbsosm;
 import android.annotation.SuppressLint;
 import android.os.Build;
 import android.util.Log;
+import android.widget.Toast;
 
 import androidx.annotation.RequiresApi;
 
 import org.osmdroid.util.GeoPoint;
+import org.osmdroid.views.MapView;
+import org.w3c.dom.Document;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
 
 import java.io.BufferedOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.StringReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 
 public class RequestPostTask{
     private HttpURLConnection client = null;
+    private MapView map = null;
     final private String uri = "http://193.196.36.78:8080"+
             "/geoserver/MobileGIS/ows?SERVICE=WFS";
     final private String WFS_FORMAT_STRING = "<wfs:Transaction service=\"WFS\" version=\"1.0.0\"" +
@@ -39,11 +52,13 @@ public class RequestPostTask{
             "</wfs:Insert>" +
             "</wfs:Transaction>";
     private String wfs_data_t = null;
+    private StringBuilder response = null;
 
 
     @RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
-    public void PostData(GeoPoint startPoint){
+    public void PostData(GeoPoint startPoint, MapView mapview){
         wfs_data_t = String.format(Locale.ROOT,WFS_FORMAT_STRING,startPoint.getLongitude(), startPoint.getLatitude());
+        map = mapview;
 
         try {
             Log.d("wfs_data", wfs_data_t);
@@ -60,7 +75,7 @@ public class RequestPostTask{
             client.setRequestProperty("Content-Type", "text/xml");
 
             OutputStream outputPost = new BufferedOutputStream(client.getOutputStream());
-            outputPost.write(wfs_data_t.getBytes("UTF-8"));
+            outputPost.write(wfs_data_t.getBytes());
             outputPost.flush();
             outputPost.close();
 
@@ -68,17 +83,44 @@ public class RequestPostTask{
             InputStream inputStream = client.getInputStream();
             byte[] res = new byte[2048];
             int i;
-            StringBuilder response = new StringBuilder();
+            response = new StringBuilder();
             while ((i = inputStream.read(res)) != -1) {
+                String input = new String(res, 0, i);
                 response.append(new String(res, 0, i));
             }
             inputStream.close();
             Log.d("wfs_response", String.valueOf(response));
+
+
         } catch (Exception e) {
             Log.e("WFS-Post", String.valueOf(e));
         } finally {
             client.disconnect();
         }
+    }
+
+    public String getResponse(){
+
+        DocumentBuilder builder;
+        StringBuilder result = new StringBuilder();
+        String waypoint_id ="";
+        try {
+            builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+
+            InputSource src = new InputSource();
+            src.setCharacterStream(new StringReader(String.valueOf(response)));
+
+            Document doc = builder.parse(src);
+            waypoint_id = doc.getElementsByTagName("wfs:InsertResult").item(0).getFirstChild().getAttributes().getNamedItem("fid").getNodeValue();
+        } catch (ParserConfigurationException | IOException | SAXException e) {
+            e.printStackTrace();
+        }
+
+        result.append("Insert result: ");
+        result.append(waypoint_id);
+        Log.d("wfs_result", String.valueOf(result));
+
+        return String.valueOf(result);
     }
 
 
