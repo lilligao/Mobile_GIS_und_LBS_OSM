@@ -29,7 +29,6 @@ import javax.xml.parsers.ParserConfigurationException;
 
 public class RequestPostTask{
     private HttpURLConnection client = null;
-    private MapView map = null;
     final private String uri = "http://193.196.36.78:8080"+
             "/geoserver/MobileGIS/ows?SERVICE=WFS";
     final private String WFS_FORMAT_STRING = "<wfs:Transaction service=\"WFS\" version=\"1.0.0\"" +
@@ -56,9 +55,9 @@ public class RequestPostTask{
 
 
     @RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
-    public void PostData(GeoPoint startPoint, MapView mapview){
+    public void PostData(GeoPoint startPoint){
+        // Locale.Root: point as decimal separator
         wfs_data_t = String.format(Locale.ROOT,WFS_FORMAT_STRING,startPoint.getLongitude(), startPoint.getLatitude());
-        map = mapview;
 
         try {
             Log.d("wfs_data", wfs_data_t);
@@ -85,7 +84,6 @@ public class RequestPostTask{
             int i;
             response = new StringBuilder();
             while ((i = inputStream.read(res)) != -1) {
-                String input = new String(res, 0, i);
                 response.append(new String(res, 0, i));
             }
             inputStream.close();

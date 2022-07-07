@@ -198,8 +198,8 @@ public class MainActivity extends AppCompatActivity {
         for (String provider : providerNames) {
             locationManager.requestLocationUpdates(
                     provider,//provider
-                    5000,//update every 1 sec
-                    3,//every 1 m
+                    5000,//update every 5 sec
+                    3,//every 3 m
                     new LocationListener() {
                         @RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
                         @Override
@@ -260,9 +260,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void addListenerOnButton_track() {
         button_track = findViewById(R.id.track_line);
-
         button_track.setOnClickListener(view -> {
-
             if (line!=null) {
                 map.getOverlayManager().add(line);
             }
@@ -282,7 +280,7 @@ public class MainActivity extends AppCompatActivity {
                     //Your code goes here
                     RequestPostTask task = new RequestPostTask();
                     for (int i=0; i < geoPoints.size(); i++){
-                        task.PostData(geoPoints.get(i), map);
+                        task.PostData(geoPoints.get(i));
                         runOnUiThread(() -> Toast.makeText(map.getContext(), task.getResponse(), Toast.LENGTH_LONG).show());
                     }
                 } catch (Exception e) {
